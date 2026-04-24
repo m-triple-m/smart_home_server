@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VisionGuard | ESP32-CAM Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="dashboard-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="logo">
+                <span class="icon">👁️</span>
+                <h1>Vision<span>Guard</span></h1>
+            </div>
+            
+            <nav class="nav-menu">
+                <a href="#" class="nav-item active">
+                    <span class="nav-icon">📊</span> Monitoring
+                </a>
+                <a href="#" class="nav-item">
+                    <span class="nav-icon">⚙️</span> Settings
+                </a>
+                <a href="#" class="nav-item">
+                    <span class="nav-icon">📁</span> Recordings
+                </a>
+            </nav>
+
+            <div class="status-card">
+                <h3>System Status</h3>
+                <div class="status-item">
+                    <span class="dot pulse"></span>
+                    <span class="label">ESP32 Online</span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <header class="top-bar">
+                <div class="search-bar">
+                    <input type="text" placeholder="Search devices...">
+                </div>
+                <div class="user-profile">
+                    <div class="notification-bell">🔔</div>
+                    <div class="avatar">Admin</div>
+                </div>
+            </header>
+
+            <section class="feed-section">
+                <div class="section-header">
+                    <h2>Live Stream Feed</h2>
+                    <div class="controls">
+                        <button class="btn-primary" onclick="recognizeFace()">Recognize Face</button>
+                        <button class="btn-secondary" onclick="toggleRegisterModal()">Register Face</button>
+                    </div>
+                </div>
+
+                <!-- Video Viewport -->
+                <div class="video-container glass">
+                    <img id="video-feed" src="{{ url_for('video_feed') }}" alt="Live Feed Loading...">
+                    <div class="video-overlay">
+                        <div class="timestamp" id="timer">LIVE</div>
+                        <div class="quality-badge">HD</div>
+                        <div id="recognition-result" class="recognition-badge" style="display: none;">
+                            <span id="result-name">Scanning...</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="stats-grid">
+                <div class="stat-card glass">
+                    <h4>Registered Faces</h4>
+                    <div id="faces-list" class="faces-list">
+                        <!-- Loaded via JS -->
+                    </div>
+                </div>
+                <div class="stat-card glass">
+                    <h4>Last Identification</h4>
+                    <p class="stat-value" id="last-id">None</p>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Register Modal -->
+    <div id="register-modal" class="modal">
+        <div class="modal-content glass">
+            <h3>Register New Face</h3>
+            <form id="register-form">
+                <div class="form-group">
+                    <label>Person Name</label>
+                    <input type="text" id="reg-name" placeholder="Enter name" required>
+                </div>
+                <div class="form-group">
+                    <label>Face Image</label>
+                    <input type="file" id="reg-image" accept="image/*" required>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn-secondary" onclick="toggleRegisterModal()">Cancel</button>
+                    <button type="submit" class="btn-primary">Save Face</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <style>
+        .recognition-badge {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(0, 255, 127, 0.8);
+            color: black;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: 600;
+            backdrop-filter: blur(5px);
+            animation: fadeIn 0.3s ease;
+        }
+        .recognition-badge.error { background: rgba(255, 75, 43, 0.8); color: white; }
+        
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.7);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal-content {
+            padding: 30px;
+            border-radius: 20px;
+            width: 400px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        .form-group { margin-bottom: 20px; }
+        .form-group label { display: block; margin-bottom: 8px; font-size: 0.9rem; opacity: 0.8; }
+        .form-group input {
+            width: 100%;
+            padding: 10px;
+            border-radius: 8px;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            color: white;
+        }
+        .modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
+        .faces-list { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; }
+        .face-tag {
+            background: rgba(255,255,255,0.1);
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 0.8rem;
+        }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+
+    <script>
+        const video = document.getElementById('video-feed');
+        const recognitionBadge = document.getElementById('recognition-result');
+        const resultName = document.getElementById('result-name');
+        const lastIdText = document.getElementById('last-id');
+        const facesList = document.getElementById('faces-list');
+
+        video.onerror = function() {
+            this.src = "https://via.placeholder.com/800x450?text=Stream+Unavailable";
+            document.querySelector('.dot').style.background = '#ff4b2b';
+        };
+
+        function toggleRegisterModal() {
+            const modal = document.getElementById('register-modal');
+            modal.style.display = modal.style.display === 'flex' ? 'none' : 'flex';
+        }
+
+        async function recognizeFace() {
+            resultName.innerText = "Scanning...";
+            recognitionBadge.style.display = "block";
+            recognitionBadge.classList.remove('error');
+
+            try {
+                const response = await fetch('/recognize', { method: 'POST' });
+                const data = await response.json();
+
+                if (data.status === 'success' && data.match_found) {
+                    resultName.innerText = `Matched: ${data.name} (${data.confidence}%)`;
+                    lastIdText.innerText = data.name;
+                    recognitionBadge.classList.remove('error');
+                } else {
+                    resultName.innerText = data.message || "No match found";
+                    recognitionBadge.classList.add('error');
+                }
+            } catch (e) {
+                resultName.innerText = "Recognition failed";
+                recognitionBadge.classList.add('error');
+            }
+
+            setTimeout(() => { recognitionBadge.style.display = "none"; }, 5000);
+        }
+
+        async function loadFaces() {
+            try {
+                const response = await fetch('/list_faces');
+                const data = await response.json();
+                facesList.innerHTML = data.faces.map(name => `<span class="face-tag">${name}</span>`).join('') || "None";
+            } catch (e) {}
+        }
+
+        document.getElementById('register-form').onsubmit = async (e) => {
+            e.preventDefault();
+            const formData = new FormData();
+            formData.append('name', document.getElementById('reg-name').value);
+            formData.append('image', document.getElementById('reg-image').files[0]);
+
+            const btn = e.target.querySelector('button[type="submit"]');
+            btn.innerText = "Saving...";
+            btn.disabled = true;
+
+            try {
+                const response = await fetch('/add_face', { method: 'POST', body: formData });
+                const data = await response.json();
+                alert(data.message);
+                if (data.status === 'success') {
+                    toggleRegisterModal();
+                    loadFaces();
+                }
+            } catch (e) {
+                alert("Failed to register face");
+            } finally {
+                btn.innerText = "Save Face";
+                btn.disabled = false;
+            }
+        };
+
+        loadFaces();
+    </script>
+</body>
+</html>
