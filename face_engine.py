@@ -127,7 +127,7 @@ def get_all_faces(faces_dir=DEFAULT_FACES_DIR):
 # Example Usage:
 if __name__ == "__main__":
     # Test matching
-    test_image = os.path.join('static', 'sample6.jpg')
+    test_image = os.path.join('static', 'sample5.jpg')
     if os.path.exists(test_image):
         print(f"Testing with: {test_image}")
         result = match_face(test_image)
